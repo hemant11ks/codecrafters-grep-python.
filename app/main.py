@@ -12,6 +12,12 @@ def match_pattern(input_line, pattern):
         return any(char.isdigit() for char in input_line)
     if pattern == "\w":
         return any(char.isalnum() or char == "_" for char in input_line)
+    
+    # Handle character group [abc]
+    if pattern.startswith("[") and pattern.endswith("]"):
+        group_chars = pattern[1:-1]  # everything inside the brackets
+        return any(char in group_chars for char in input_line)
+    
     else:
         raise RuntimeError(f"Unhandled pattern: {pattern}")
 

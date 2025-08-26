@@ -1,4 +1,5 @@
 import sys
+#git commit -am "[any message]"
 
 # import pyparsing - available if you need it!
 # import lark - available if you need it!
@@ -7,6 +8,8 @@ import sys
 def match_pattern(input_line, pattern):
     if len(pattern) == 1:
         return pattern in input_line
+    if pattern == "\d":
+        return any(char.isdigit() for char in input_line)
     else:
         raise RuntimeError(f"Unhandled pattern: {pattern}")
 

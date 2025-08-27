@@ -1,12 +1,12 @@
 import string
 import sys
 
-# import pyparsing - available if you need it!
-# import lark - available if you need it!
-
 
 def match_here(input_line, pattern):
     if pattern == "":
+        return True
+    if pattern == "$" and input_line == "":
+        # Only matches if we're at the end
         return True
     if input_line == "":
         return False

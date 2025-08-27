@@ -17,6 +17,12 @@ def match_pattern(input_line, pattern):
     if pattern.startswith("[") and pattern.endswith("]"):
         group_chars = pattern[1:-1]  # everything inside the brackets
         return any(char in group_chars for char in input_line)
+
+    # Handle negated character group [^abc]
+      # Negative character group [^abc]
+    if pattern.startswith("[^") and pattern.endswith("]"):
+        excluded_chars = pattern[2:-1]  # everything after ^ and before ]
+        return any(char not in excluded_chars for char in input_line)
     
     else:
         raise RuntimeError(f"Unhandled pattern: {pattern}")

@@ -1,113 +1,88 @@
-import string
 import sys
 
 
-def match_here(input_line, pattern):
-    if pattern == "":
+# import pyparsing - available if you need it!
+# import lark - available if you need it!
+
+
+def match_pattern(input_line, pattern, must_match_now=False):
+    # Debug investigation
+    print(f"{input_line:>50} | {pattern:>20}")
+
+    # Termination
+    if len(pattern) == 0:
         return True
-    if pattern == "$" and input_line == "":
-        return True
-    if input_line == "":
+    if len(input_line) == 0:
         return False
 
-    # Handle alternation ( ... | ... )
-    if pattern.startswith("("):
-        depth, closing = 0, -1
-        for i, ch in enumerate(pattern):
-            if ch == "(":
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0:
-                    closing = i
-                    break
-        if closing == -1:
-            raise ValueError("Unmatched ( in pattern")
-
-        inside = pattern[1:closing]
-        rest = pattern[closing + 1:]
-
-        # split on top-level |
-        parts, buf, d = [], "", 0
-        for c in inside:
-            if c == "(":
-                d += 1
-                buf += c
-            elif c == ")":
-                d -= 1
-                buf += c
-            elif c == "|" and d == 0:
-                parts.append(buf)
-                buf = ""
-            else:
-                buf += c
-        parts.append(buf)
-
-        for option in parts:
-            if match_here(input_line, option + rest):
+    # Recurrence: tries to find 1st element of pattern
+    # We build input_line_next and pattern_next that will be used for the next match_pattern call
+    current_char, input_line_next, pattern_used, matched = input_line[0], input_line[1:], '', False
+    if pattern.startswith(r"\d"):
+        pattern_used, matched = r"\d", match_digit(current_char)
+    elif pattern.startswith(r"\w"):
+        pattern_used, matched = r"\w", match_alphanumeric(current_char)
+    elif pattern[0] == '[':
+        closingBracketIndex = pattern.index(']')
+        pattern_used = pattern[:closingBracketIndex + 1]
+        matched = (pattern[1] == '^' and match_negative_character_group(current_char, pattern[2:closingBracketIndex])) \
+                  or \
+                  (pattern[1] != '^' and match_positive_character_group(current_char, pattern[1:closingBracketIndex]))
+    elif pattern[0] == '.':
+        pattern_used, matched = '.', True
+    elif pattern[0] == '(':
+        closingParenthesisIndex = pattern.index(')')
+        pattern_used = pattern[:closingParenthesisIndex + 1]
+        or_patterns = pattern_used[1:-1].split('|')
+        # Not the most efficient but we "fork" until the end of the full pattern for each of them
+        end_pattern = pattern[len(pattern_used):]
+        for p in or_patterns:
+            if match_pattern(input_line, p + end_pattern):
                 return True
         return False
-
-    # Handle + quantifier (one or more)
-    if len(pattern) >= 2 and pattern[1] == "+":
-        atom = pattern[0]
-        rest = pattern[2:]
-        if not single_match(input_line[0], atom):
-            return False
-        i = 1
-        while i < len(input_line) and single_match(input_line[i], atom):
-            if match_here(input_line[i + 1:], rest):
-                return True
-            i += 1
-        return match_here(input_line[i:], rest)
-
-    # Handle ? quantifier (zero or one)
-    if len(pattern) >= 2 and pattern[1] == "?":
-        atom = pattern[0]
-        rest = pattern[2:]
-        if match_here(input_line, rest):
-            return True
-        if single_match(input_line[0], atom):
-            return match_here(input_line[1:], rest)
+    else:
+        # We perform direct match
+        pattern_used, matched = pattern[0], current_char == pattern[0]
+    if must_match_now and not matched:
         return False
 
-    # Handle escapes and classes
-    if pattern.startswith("\\d"):
-        return (input_line[0] in string.digits) and match_here(input_line[1:], pattern[2:])
-    if pattern.startswith("\\w"):
-        return (input_line[0] in string.digits + string.ascii_letters + "_") and match_here(input_line[1:], pattern[2:])
-    if pattern.startswith("["):
-        pattern_end = pattern.find("]")
-        if pattern_end == -1:
-            raise ValueError("invalid pattern")
-        if pattern[1] == "^":
-            return (input_line[0] not in pattern[2:pattern_end]) and match_here(
-                input_line[1:], pattern[pattern_end + 1:]
-            )
-        return (input_line[0] in pattern[1:pattern_end]) and match_here(
-            input_line[1:], pattern[pattern_end + 1:]
-        )
+    # Check for modifier
+    if len(pattern) > len(pattern_used):
+        if matched and pattern[len(pattern_used)] == '+':
+            while match_pattern(input_line_next, pattern_used):
+                input_line_next = input_line_next[1:]
+            pattern_used = pattern[:len(pattern_used) + 1]  # We also matched the + modifier
+        if pattern[len(pattern_used)] == '?':  # regardless of pattern matched or not => it is a match for ?
+            if not matched:  # we should not move to the next character as this pattern was optional
+                input_line_next = input_line
+            pattern_used, matched = pattern[:len(pattern_used) + 1], True
 
-    # Literal match
-    return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
+    pattern_next = pattern
+    if matched:
+        pattern_next = pattern[len(pattern_used):]
+    if pattern_next == '$':
+        return input_line_next == ''
+    return match_pattern(input_line_next, pattern_next)
 
 
-def single_match(ch, atom):
-    if atom == "\\d":
-        return ch in string.digits
-    if atom == "\\w":
-        return ch in string.digits + string.ascii_letters + "_"
-    return ch == atom
+def match_digit(input_line):
+    # return any([str(d) in input_line for d in range(10)])
+    return match_positive_character_group(input_line, '0123456789')
 
 
-def match_pattern(input_line, pattern):
-    if pattern.startswith("^"):
-        return match_here(input_line, pattern[1:])
-    while len(input_line) > 0:
-        if match_here(input_line, pattern):
-            return True
-        input_line = input_line[1:]
-    return False
+def match_alphanumeric(input_line):
+    # return any([w in input_line for w in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789'])
+    return match_positive_character_group(input_line, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789')
+
+
+def match_positive_character_group(input_line, character_group):
+    # Ref.: https://learn.microsoft.com/en-us/dotnet/standard/base-types/character-classes-in-regular-expressions#positive-character-group--
+    return any([c in character_group for c in input_line])
+
+
+def match_negative_character_group(input_line, character_group):
+    # Ref.: https://learn.microsoft.com/en-us/dotnet/standard/base-types/character-classes-in-regular-expressions#negative-character-group-
+    return any([c not in character_group for c in input_line])
 
 
 def main():
@@ -118,9 +93,18 @@ def main():
         print("Expected first argument to be '-E'")
         exit(1)
 
-    if match_pattern(input_line, pattern):
+    if len(pattern) == 0:
+        return True
+
+    must_match_now = False
+    if pattern[0] == '^':
+        pattern = pattern[1:]
+        must_match_now = True
+
+    if match_pattern(input_line, pattern, must_match_now):
         exit(0)
-    exit(1)
+    else:
+        exit(1)
 
 
 if __name__ == "__main__":

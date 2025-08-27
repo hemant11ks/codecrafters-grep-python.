@@ -1,9 +1,4 @@
 import sys
-#git commit -am "[any message]"
-
-# import pyparsing - available if you need it!
-# import lark - available if you need it!
-
 
 def match_pattern(input_line, pattern):
     if len(pattern) == 1:
@@ -13,34 +8,35 @@ def match_pattern(input_line, pattern):
     if pattern == "\w":
         return any(char.isalnum() or char == "_" for char in input_line)
     
-    # Handle character group [abc]
+    # Handle negated character group [^abc]
+    if pattern.startswith("[^") and pattern.endswith("]"):
+        excluded_chars = pattern[2:-1]
+        return any(char not in excluded_chars for char in input_line)
+
+    # Handle positive character group [abc]
     if pattern.startswith("[") and pattern.endswith("]"):
-        group_chars = pattern[1:-1]  # everything inside the brackets
+        group_chars = pattern[1:-1]
         return any(char in group_chars for char in input_line)
 
-    # Handle negated character group [^abc]
-      # Negative character group [^abc]
-    if pattern.startswith("[^") and pattern.endswith("]"):
-        excluded_chars = pattern[2:-1]  # everything after ^ and before ]
-        return any(char not in excluded_chars for char in input_line)
-    
-    else:
-        raise RuntimeError(f"Unhandled pattern: {pattern}")
+    # Fallback: simple substring match
+    return pattern in input_line
 
 
 def main():
-    pattern = sys.argv[2]
-    input_line = sys.stdin.read()
-
     if sys.argv[1] != "-E":
         print("Expected first argument to be '-E'")
         exit(1)
 
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    print("Logs from your program will appear here!", file=sys.stderr)
+    pattern = sys.argv[2]
+    input_lines = sys.stdin.read().splitlines()
 
-    # Uncomment this block to pass the first stage
-    if match_pattern(input_line, pattern):
+    matched = False
+    for line in input_lines:
+        if match_pattern(line, pattern):
+            print(line)
+            matched = True
+
+    if matched:
         exit(0)
     else:
         exit(1)

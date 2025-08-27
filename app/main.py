@@ -1,13 +1,33 @@
 import string
 import sys
 
-
 def match_here(input_line, pattern):
     if pattern == "":
         return True
     if pattern == "$" and input_line == "":
         return True
     if input_line == "":
+        return False
+
+    # Handle alternation (|)
+    if pattern.startswith("("):
+        depth, closing = 0, -1
+        for i, ch in enumerate(pattern):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    closing = i
+                    break
+        if closing == -1:
+            raise ValueError("Unmatched ( in pattern")
+
+        inside = pattern[1:closing]
+        rest = pattern[closing + 1:]
+        for option in inside.split("|"):
+            if match_here(input_line, option + rest):
+                return True
         return False
 
     # Handle + quantifier (one or more)
@@ -18,7 +38,7 @@ def match_here(input_line, pattern):
             return False
         i = 1
         while i < len(input_line) and single_match(input_line[i], atom):
-            if match_here(input_line[i + 1 :], rest):
+            if match_here(input_line[i + 1:], rest):
                 return True
             i += 1
         return match_here(input_line[i:], rest)
@@ -27,41 +47,30 @@ def match_here(input_line, pattern):
     if len(pattern) >= 2 and pattern[1] == "?":
         atom = pattern[0]
         rest = pattern[2:]
-        # Case 1: skip atom (zero occurrence)
         if match_here(input_line, rest):
             return True
-        # Case 2: consume one atom if possible
         if single_match(input_line[0], atom):
             return match_here(input_line[1:], rest)
         return False
 
     # Handle escapes and classes
     if pattern.startswith(r"\d"):
-        return (input_line[0] in string.digits) and match_here(
-            input_line[1:], pattern[2:]
-        )
+        return (input_line[0] in string.digits) and match_here(input_line[1:], pattern[2:])
     if pattern.startswith(r"\w"):
-        return (
-            input_line[0] in string.digits + string.ascii_letters + "_"
-        ) and match_here(input_line[1:], pattern[2:])
+        return (input_line[0] in string.digits + string.ascii_letters + "_") and match_here(input_line[1:], pattern[2:])
     if pattern.startswith("["):
         pattern_end = pattern.find("]")
         if pattern_end == -1:
             raise ValueError("invalid pattern")
         if pattern[1] == "^":
-            return (input_line[0] not in pattern[2:pattern_end]) and match_here(
-                input_line[1:], pattern[pattern_end + 1 :]
-            )
-        return (input_line[0] in pattern[1:pattern_end]) and match_here(
-            input_line[1:], pattern[pattern_end + 1 :]
-        )
+            return (input_line[0] not in pattern[2:pattern_end]) and match_here(input_line[1:], pattern[pattern_end + 1:])
+        return (input_line[0] in pattern[1:pattern_end]) and match_here(input_line[1:], pattern[pattern_end + 1:])
 
     # Literal match
     return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
 
 
 def single_match(ch, atom):
-    """Helper: check if one character matches a given atom (literal, \d, \w)."""
     if atom == r"\d":
         return ch in string.digits
     if atom == r"\w":

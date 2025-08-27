@@ -1,204 +1,155 @@
+import string
 import sys
 
-# import pyparsing - available if you need it!
-# import lark - available if you need it!
+def match_here(input_line, pattern):
+    """
+    Recursive function that checks whether the beginning of input_line
+    matches the given regex pattern.
+    """
 
-
-def match(original_input_line, input_line, pattern):
-    if pattern[0] == "^":
-        return match_pattern(original_input_line, input_line, pattern[1:])
-    for i in range(len(input_line)):
-        if match_pattern(original_input_line, input_line[i:], pattern):
-            return True
-    return False
-
-
-def match_plus(original_input_line, input_line, pattern, pattern_idx):
-    # if pattern[0] != "." and input_line[0] != pattern[0]:
-    #     return False
-
-    return match_pattern(original_input_line, input_line[1:], pattern) or match_pattern(
-        original_input_line,
-        input_line[1:],
-        pattern[pattern_idx:],
-    )
-
-
-group_str = {}
-groups = []
-
-
-def match_pattern(original_input_line, input_line, pattern):
-    if not pattern:
+    # Base case: empty pattern always matches
+    if pattern == "":
         return True
 
-    if not input_line:
-        return pattern in ["$", ")"]
+    # If pattern ends with $, match only if input_line is empty
+    if pattern == "$" and input_line == "":
+        return True
 
-    if pattern[0] == ")":
-        if not groups:
+    # If pattern remains but input string is empty => no match
+    if input_line == "":
+        return False
+
+    # ------------------------
+    # Handle '+' quantifier: one or more occurrences of preceding atom
+    # Example: a+ matches "a", "aa", "aaa", etc.
+    # ------------------------
+    if len(pattern) >= 2 and pattern[1] == "+":
+        atom = pattern[0]         # the character/atom before '+'
+        rest = pattern[2:]        # remaining pattern after '+'
+
+        # First character must match the atom at least once
+        if not single_match(input_line[0], atom):
             return False
-        group_end_idx = len(original_input_line) - len(input_line)
-        group_number, group_start_idx = groups.pop()
-        group_str[group_number] = original_input_line[group_start_idx:group_end_idx]
-        return match_pattern(
-            original_input_line,
-            input_line,
-            pattern[1:],
-        )
 
-    if pattern[0] == "(":
-        right_paren_idx = 1
-        for i in range(1, len(pattern)):
-            right_paren_idx = i
-            if pattern[i] == ")":
-                break
-
-        group_number = len(group_str) + 1
-        group_str.setdefault(group_number, "")
-        group_start_idx = len(original_input_line) - len(input_line)
-        groups.append((group_number, group_start_idx))
-
-        if "|" in pattern[1:right_paren_idx]:
-            for group_pattern in pattern[1:right_paren_idx].split("|"):
-                if match_pattern(
-                    original_input_line,
-                    input_line,
-                    group_pattern + pattern[right_paren_idx:],
-                ):
-                    return True
-        else:
-            if match_pattern(
-                original_input_line,
-                input_line,
-                pattern[1:],
-            ):
+        # Consume as many repetitions as possible (greedy match)
+        i = 1
+        while i < len(input_line) and single_match(input_line[i], atom):
+            # Recursive call: try matching the rest of the pattern
+            if match_here(input_line[i + 1:], rest):
                 return True
+            i += 1
+
+        # If loop ends, try matching remaining input with rest
+        return match_here(input_line[i:], rest)
+
+    # ------------------------
+    # Handle '?' quantifier: zero or one occurrence of preceding atom
+    # Example: a? matches "" or "a"
+    # ------------------------
+    if len(pattern) >= 2 and pattern[1] == "?":
+        atom = pattern[0]
+        rest = pattern[2:]
+
+        # Case 1: Skip atom (zero occurrence)
+        if match_here(input_line, rest):
+            return True
+
+        # Case 2: Consume one atom if it matches
+        if single_match(input_line[0], atom):
+            return match_here(input_line[1:], rest)
 
         return False
 
-    if pattern[0] == "\\" and pattern[1].isdigit():
-        group_pattern = group_str[int(pattern[1])]
-        return match_pattern(
-            original_input_line,
-            input_line,
-            group_pattern + pattern[2:],
+    # ------------------------
+    # Handle escape sequences and character classes
+    # ------------------------
+
+    # \d => digit [0-9]
+    if pattern.startswith(r"\d"):
+        return (input_line[0] in string.digits) and match_here(
+            input_line[1:], pattern[2:]
         )
 
-    if len(pattern) > 1 and pattern[1] == "+":
-        if pattern[0] != "." and input_line[0] != pattern[0]:
-            return False
-        return match_plus(original_input_line, input_line, pattern, 2)
+    # \w => word character [0-9a-zA-Z_]
+    if pattern.startswith(r"\w"):
+        return (
+            input_line[0] in string.digits + string.ascii_letters + "_"
+        ) and match_here(input_line[1:], pattern[2:])
 
-    if len(pattern) > 1 and pattern[1] == "?":
-        if input_line[0] == pattern[0]:
-            return match_pattern(
-                original_input_line,
-                input_line[1:],
-                pattern[2:],
-            )
+    # Character class [...]
+    if pattern.startswith("["):
+        pattern_end = pattern.find("]")  # find closing bracket
+        if pattern_end == -1:
+            raise ValueError("invalid pattern: missing ']'")
 
-        return match_pattern(original_input_line, input_line, pattern[2:])
-
-    if pattern[0] == "." or pattern[0] == input_line[0]:
-        return match_pattern(
-            original_input_line,
-            input_line[1:],
-            pattern[1:],
-        )
-
-    if pattern[:2] == "\\d" and input_line[0].isdigit():
-        if len(pattern) > 2 and pattern[2] == "+":
-            return match_plus(
-                original_input_line,
-                input_line,
-                pattern,
-                3,
-            )
-        return match_pattern(
-            original_input_line,
-            input_line[1:],
-            pattern[2:],
-        )
-
-    if pattern[:2] == "\\w" and (input_line[0].isalnum() or input_line[0] == "_"):
-        if len(pattern) > 2 and pattern[2] == "+":
-            return match_plus(
-                original_input_line,
-                input_line,
-                pattern,
-                3,
-            )
-        return match_pattern(
-            original_input_line,
-            input_line[1:],
-            pattern[2:],
-        )
-
-    if pattern[0] == "[":
-        right_bracket_idx = 1
-        for i in range(1, len(pattern)):
-            right_bracket_idx = i
-            if pattern[i] == "]":
-                break
+        # Case 1: Negated class [^...]
         if pattern[1] == "^":
-            if (
-                input_line[0].isalnum()
-                and input_line[0] not in pattern[2:right_bracket_idx]
-            ):
-                if (
-                    right_bracket_idx < len(pattern) - 1
-                    and pattern[right_bracket_idx + 1] == "+"
-                ):
-                    return match_plus(
-                        original_input_line,
-                        input_line,
-                        pattern,
-                        right_bracket_idx + 2,
-                    )
-                return match_pattern(
-                    original_input_line,
-                    input_line[1:],
-                    pattern[right_bracket_idx + 1 :],
-                )
-        else:
-            if input_line[0] in pattern[1:right_bracket_idx]:
-                if (
-                    right_bracket_idx < len(pattern) - 1
-                    and pattern[right_bracket_idx + 1] == "+"
-                ):
-                    return match_plus(
-                        original_input_line,
-                        input_line,
-                        pattern,
-                        right_bracket_idx + 2,
-                    )
-                return match_pattern(
-                    original_input_line,
-                    input_line[1:],
-                    pattern[right_bracket_idx + 1 :],
-                )
+            return (
+                input_line[0] not in pattern[2:pattern_end]
+            ) and match_here(input_line[1:], pattern[pattern_end + 1 :])
+
+        # Case 2: Normal class [...]
+        return (
+            input_line[0] in pattern[1:pattern_end]
+        ) and match_here(input_line[1:], pattern[pattern_end + 1 :])
+
+    # ------------------------
+    # Default case: literal match
+    # ------------------------
+    return (input_line[0] == pattern[0]) and match_here(
+        input_line[1:], pattern[1:]
+    )
+
+
+def single_match(ch, atom):
+    """
+    Helper: check if a single character `ch` matches a regex atom.
+    Supported atoms: literal, \d, \w
+    """
+    if atom == r"\d":
+        return ch in string.digits
+    if atom == r"\w":
+        return ch in string.digits + string.ascii_letters + "_"
+    return ch == atom
+
+
+def match_pattern(input_line, pattern):
+    """
+    Wrapper function: checks whether the entire input matches the regex pattern.
+    Supports '^' (start of string) anchor.
+    """
+    # If pattern starts with ^, must match from the beginning
+    if pattern.startswith("^"):
+        return match_here(input_line, pattern[1:])
+
+    # Otherwise, search pattern anywhere in the string
+    while len(input_line) > 0:
+        if match_here(input_line, pattern):
+            return True
+        # Shift window: try next substring
+        input_line = input_line[1:]
+
     return False
 
 
 def main():
+    """
+    Entry point for CLI usage.
+    Usage: ./your_program.sh -E "pattern"
+    Reads input from stdin and matches against pattern.
+    """
     pattern = sys.argv[2]
     input_line = sys.stdin.read()
 
+    # Ensure correct flag is provided
     if sys.argv[1] != "-E":
         print("Expected first argument to be '-E'")
         exit(1)
 
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    print("Logs from your program will appear here!", file=sys.stderr)
-    # echo -n "abc-def is abc-def, not efg, abc, or def" | ./your_program.sh -E "(([abc]+)-([def]+)) is \1, not ([^xyz]+), \2, or \3"
-    # input_line = "abc-def is abc-def, not efg, abc, or def"
-    # pattern = "(([abc]+)-([def]+)) is \\1, not ([^xyz]+), \\2, or \\3"
-    # Uncomment this block to pass the first stage
-    if match(input_line, input_line, pattern):
+    # Match and exit with proper code
+    if match_pattern(input_line, pattern):
         exit(0)
-    else:
-        exit(1)
+    exit(1)
 
 
 if __name__ == "__main__":

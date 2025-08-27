@@ -10,22 +10,30 @@ def match_here(input_line, pattern):
     if input_line == "":
         return False
 
-    # Handle + quantifier
+    # Handle + quantifier (one or more)
     if len(pattern) >= 2 and pattern[1] == "+":
         atom = pattern[0]
         rest = pattern[2:]
-        # First: must match at least one occurrence of atom
         if not single_match(input_line[0], atom):
             return False
         i = 1
-        # Consume as many atom matches as possible
         while i < len(input_line) and single_match(input_line[i], atom):
-            # Try with each possible split
             if match_here(input_line[i + 1 :], rest):
                 return True
             i += 1
-        # Final try after consuming all
         return match_here(input_line[i:], rest)
+
+    # Handle ? quantifier (zero or one)
+    if len(pattern) >= 2 and pattern[1] == "?":
+        atom = pattern[0]
+        rest = pattern[2:]
+        # Case 1: skip atom (zero occurrence)
+        if match_here(input_line, rest):
+            return True
+        # Case 2: consume one atom if possible
+        if single_match(input_line[0], atom):
+            return match_here(input_line[1:], rest)
+        return False
 
     # Handle escapes and classes
     if pattern.startswith(r"\d"):
@@ -53,7 +61,7 @@ def match_here(input_line, pattern):
 
 
 def single_match(ch, atom):
-    """Helper: check if one character matches a given atom."""
+    """Helper: check if one character matches a given atom (literal, \d, \w)."""
     if atom == r"\d":
         return ch in string.digits
     if atom == r"\w":

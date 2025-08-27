@@ -27,11 +27,9 @@ def match_here(input_line, pattern):
     if len(pattern) >= 2 and pattern[1] == "?":
         atom = pattern[0]
         rest = pattern[2:]
-        # Case 1: skip atom (zero occurrence)
-        if match_here(input_line, rest):
+        if match_here(input_line, rest):  # zero occurrence
             return True
-        # Case 2: consume one atom if possible
-        if single_match(input_line[0], atom):
+        if single_match(input_line[0], atom):  # one occurrence
             return match_here(input_line[1:], rest)
         return False
 
@@ -56,12 +54,18 @@ def match_here(input_line, pattern):
             input_line[1:], pattern[pattern_end + 1 :]
         )
 
+    # Handle '.' (match any single char)
+    if pattern[0] == ".":
+        return match_here(input_line[1:], pattern[1:])
+
     # Literal match
     return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
 
 
 def single_match(ch, atom):
-    """Helper: check if one character matches a given atom (literal, \d, \w)."""
+    """Helper: check if one character matches a given atom (literal, ., \d, \w)."""
+    if atom == ".":
+        return True
     if atom == r"\d":
         return ch in string.digits
     if atom == r"\w":

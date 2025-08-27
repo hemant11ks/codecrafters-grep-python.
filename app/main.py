@@ -1,82 +1,59 @@
-import string
 import sys
 
+# import pyparsing - available if you need it!
+# import lark - available if you need it!
 
-def match_here(input_line, pattern):
-    if pattern == "":
-        return True
-    if pattern == "$" and input_line == "":
-        return True
-    if input_line == "":
-        return False
 
-    # Handle + quantifier (one or more)
-    if len(pattern) >= 2 and pattern[1] == "+":
-        atom = pattern[0]
-        rest = pattern[2:]
-        if not single_match(input_line[0], atom):
-            return False
-        i = 1
-        while i < len(input_line) and single_match(input_line[i], atom):
-            if match_here(input_line[i + 1 :], rest):
-                return True
-            i += 1
-        return match_here(input_line[i:], rest)
-
-    # Handle ? quantifier (zero or one)
-    if len(pattern) >= 2 and pattern[1] == "?":
-        atom = pattern[0]
-        rest = pattern[2:]
-        if match_here(input_line, rest):  # zero occurrence
+def match_plus(text, match, regexp):
+    while text and text[0] == match:
+        text = text[1:]
+        if match_here(text, regexp):
             return True
-        if single_match(input_line[0], atom):  # one occurrence
-            return match_here(input_line[1:], rest)
-        return False
-
-    # Handle escapes and classes
-    if pattern.startswith(r"\d"):
-        return (input_line[0] in string.digits) and match_here(
-            input_line[1:], pattern[2:]
-        )
-    if pattern.startswith(r"\w"):
-        return (
-            input_line[0] in string.digits + string.ascii_letters + "_"
-        ) and match_here(input_line[1:], pattern[2:])
-    if pattern.startswith("["):
-        pattern_end = pattern.find("]")
-        if pattern_end == -1:
-            raise ValueError("invalid pattern")
-        if pattern[1] == "^":
-            return (input_line[0] not in pattern[2:pattern_end]) and match_here(
-                input_line[1:], pattern[pattern_end + 1 :]
-            )
-        return (input_line[0] in pattern[1:pattern_end]) and match_here(
-            input_line[1:], pattern[pattern_end + 1 :]
-        )
-
-    # Handle '.' (match any single char)
-    if pattern[0] == ".":
-        return match_here(input_line[1:], pattern[1:])
-
-    # Literal match
-    return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
+    return False
 
 
-def single_match(ch, atom):
-    """Helper: check if one character matches a given atom (literal, ., \d, \w)."""
-    if atom == ".":
+def match_question_mark(text, match, regexp):
+    return (
+        match_here(text[1:], regexp) if text[0] == match else match_here(text, regexp)
+    )
+
+
+def match_here(text, regexp):
+    if regexp == "":
         return True
-    if atom == r"\d":
-        return ch in string.digits
-    if atom == r"\w":
-        return ch in string.digits + string.ascii_letters + "_"
-    return ch == atom
+    if regexp and not text:
+        return regexp == "$"
+    if text == "":
+        return False
+    if len(regexp) == 1:
+        return regexp == text[0]
+    if len(regexp) > 1 and regexp[1] == "?":
+        return match_question_mark(text, regexp[0], regexp[2:])
+    if len(regexp) > 1 and regexp[1] == "+":
+        return match_plus(text, regexp[0], regexp[2:])
+    if regexp[0] == ".":
+        return match_here(text[1:], regexp[1:])
+    if r"\d" == regexp[:2] and text[0].isdigit():
+        return match_here(text[1:], regexp[2:])
+    if r"\w" == regexp[:2] and text[0].isalnum():
+        return match_here(text[1:], regexp[2:])
+    if regexp[0] == "(" and regexp[-1] == ")":
+        patterns = regexp[1:-1].split("|")
+        return any(match_here(text, p) for p in patterns)
+    if regexp[0] == text[0]:
+        return match_here(text[1:], regexp[1:])
+    else:
+        return False
 
 
 def match_pattern(input_line, pattern):
-    if pattern.startswith("^"):
+    if pattern[0] == "[" and pattern[-1] == "]":
+        if pattern[1] == "^":
+            return all(c not in input_line for c in pattern[2:-1])
+        return any(c in input_line for c in pattern[1:-1])
+    if pattern[0] == "^":
         return match_here(input_line, pattern[1:])
-    while len(input_line) > 0:
+    while input_line:
         if match_here(input_line, pattern):
             return True
         input_line = input_line[1:]
@@ -91,9 +68,14 @@ def main():
         print("Expected first argument to be '-E'")
         exit(1)
 
+    # You can use print statements as follows for debugging, they'll be visible when running tests.
+    print("Logs from your program will appear here!")
+
+    # Uncomment this block to pass the first stage
     if match_pattern(input_line, pattern):
         exit(0)
-    exit(1)
+    else:
+        exit(1)
 
 
 if __name__ == "__main__":

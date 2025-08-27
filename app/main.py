@@ -1,6 +1,7 @@
 import string
 import sys
 
+
 def match_here(input_line, pattern):
     if pattern == "":
         return True
@@ -9,7 +10,7 @@ def match_here(input_line, pattern):
     if input_line == "":
         return False
 
-    # Handle alternation (|)
+    # Handle alternation ( ... | ... )
     if pattern.startswith("("):
         depth, closing = 0, -1
         for i, ch in enumerate(pattern):
@@ -25,7 +26,24 @@ def match_here(input_line, pattern):
 
         inside = pattern[1:closing]
         rest = pattern[closing + 1:]
-        for option in inside.split("|"):
+
+        # split on top-level |
+        parts, buf, d = [], "", 0
+        for c in inside:
+            if c == "(":
+                d += 1
+                buf += c
+            elif c == ")":
+                d -= 1
+                buf += c
+            elif c == "|" and d == 0:
+                parts.append(buf)
+                buf = ""
+            else:
+                buf += c
+        parts.append(buf)
+
+        for option in parts:
             if match_here(input_line, option + rest):
                 return True
         return False
@@ -54,26 +72,30 @@ def match_here(input_line, pattern):
         return False
 
     # Handle escapes and classes
-    if pattern.startswith(r"\d"):
+    if pattern.startswith("\\d"):
         return (input_line[0] in string.digits) and match_here(input_line[1:], pattern[2:])
-    if pattern.startswith(r"\w"):
+    if pattern.startswith("\\w"):
         return (input_line[0] in string.digits + string.ascii_letters + "_") and match_here(input_line[1:], pattern[2:])
     if pattern.startswith("["):
         pattern_end = pattern.find("]")
         if pattern_end == -1:
             raise ValueError("invalid pattern")
         if pattern[1] == "^":
-            return (input_line[0] not in pattern[2:pattern_end]) and match_here(input_line[1:], pattern[pattern_end + 1:])
-        return (input_line[0] in pattern[1:pattern_end]) and match_here(input_line[1:], pattern[pattern_end + 1:])
+            return (input_line[0] not in pattern[2:pattern_end]) and match_here(
+                input_line[1:], pattern[pattern_end + 1:]
+            )
+        return (input_line[0] in pattern[1:pattern_end]) and match_here(
+            input_line[1:], pattern[pattern_end + 1:]
+        )
 
     # Literal match
     return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
 
 
 def single_match(ch, atom):
-    if atom == r"\d":
+    if atom == "\\d":
         return ch in string.digits
-    if atom == r"\w":
+    if atom == "\\w":
         return ch in string.digits + string.ascii_letters + "_"
     return ch == atom
 

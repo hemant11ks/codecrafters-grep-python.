@@ -1,68 +1,45 @@
+import string
 import sys
 
-LITERAL = 0
-DIGIT = 1
-ALNUM = 2
-POS_CHAR_GROUP = 3
-NEG_CHAR_GROUP = 4
-START_ANCHOR = 5  # new
-
-numbers = list("0123456789")
-alphanum = list("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
+# import pyparsing - available if you need it!
+# import lark - available if you need it!
 
 
-def match_one(input_line, token, pattern, at_start):
-    if token == DIGIT:
-        return input_line[1:] if input_line and input_line[0] in numbers else False
-    elif token == ALNUM:
-        return input_line[1:] if input_line and input_line[0] in alphanum else False
-    elif token == LITERAL:
-        return input_line[1:] if input_line and input_line[0] == pattern[0] else False
-    elif token == POS_CHAR_GROUP:
-        inclusion = pattern[1 : pattern.index("]")]
-        return input_line[1:] if input_line and input_line[0] in inclusion else False
-    elif token == NEG_CHAR_GROUP:
-        exclusion = pattern[2 : pattern.index("]")]
-        return input_line[1:] if input_line and input_line[0] not in exclusion else False
-    elif token == START_ANCHOR:
-        return input_line if at_start else False
-    else:
+def match_here(input_line, pattern):
+    if pattern == "":
+        return True
+    if input_line == "":
         return False
+    if pattern.startswith(r"\d"):
+        return (input_line[0] in string.digits) and match_here(
+            input_line[1:], pattern[2:]
+        )
+    if pattern.startswith(r"\w"):
+        return (
+            input_line[0] in string.digits + string.ascii_letters + "_"
+        ) and match_here(input_line[1:], pattern[2:])
+    if pattern.startswith(r"["):
+        pattern_end = pattern.find("]")
+        if pattern_end == -1:
+            raise ValueError("invalid pattern")
+        if pattern[1] == "^":
+            return (input_line[0] not in pattern[2:pattern_end]) and match_here(
+                input_line[1:], pattern[pattern_end + 1 :]
+            )
+        return (input_line[0] in pattern[1:pattern_end]) and match_here(
+            input_line[1:], pattern[pattern_end + 1 :]
+        )
+    return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
 
 
-def determine_next_token(pattern):
-    if len(pattern) >= 2 and pattern[:2] == "\\d":
-        return DIGIT, pattern[2:]
-    elif len(pattern) >= 2 and pattern[:2] == "\\w":
-        return ALNUM, pattern[2:]
-    elif len(pattern) >= 2 and pattern[:2] == "[^":
-        return NEG_CHAR_GROUP, pattern[pattern.index("]") + 1 :]
-    elif pattern and pattern[0] == "[":
-        return POS_CHAR_GROUP, pattern[pattern.index("]") + 1 :]
-    elif pattern and pattern[0] == "^":
-        return START_ANCHOR, pattern[1:]
-    else:
-        return LITERAL, pattern[1:]
-
-
-def match_pattern(input_line, pattern, latest_token_satisfied):
-    at_start = True
-    while True:
-        if pattern == "":
+def match_pattern(input_line, pattern):
+    if pattern.startswith("^"):
+        return match_here(input_line, pattern[1:])
+    while len(input_line) > 0:
+        if match_here(input_line, pattern):
             return True
-        if input_line == "" and pattern != "":
-            return False
-
-        next_token, remaining_pattern = determine_next_token(pattern)
-        result = match_one(input_line, next_token, pattern, at_start)
-
-        if result is False:
-            return False
-        else:
-            input_line = result
-            pattern = remaining_pattern
-            at_start = False
-    return pattern == ""
+        input_line = input_line[1:]
+    return False
 
 
 def main():
@@ -73,10 +50,9 @@ def main():
         print("Expected first argument to be '-E'")
         exit(1)
 
-    if match_pattern(input_line, pattern, False):
+    if match_pattern(input_line, pattern):
         exit(0)
-    else:
-        exit(1)
+    exit(1)
 
 
 if __name__ == "__main__":

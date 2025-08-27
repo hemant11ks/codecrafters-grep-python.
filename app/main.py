@@ -6,10 +6,28 @@ def match_here(input_line, pattern):
     if pattern == "":
         return True
     if pattern == "$" and input_line == "":
-        # Only matches if we're at the end
         return True
     if input_line == "":
         return False
+
+    # Handle + quantifier
+    if len(pattern) >= 2 and pattern[1] == "+":
+        atom = pattern[0]
+        rest = pattern[2:]
+        # First: must match at least one occurrence of atom
+        if not single_match(input_line[0], atom):
+            return False
+        i = 1
+        # Consume as many atom matches as possible
+        while i < len(input_line) and single_match(input_line[i], atom):
+            # Try with each possible split
+            if match_here(input_line[i + 1 :], rest):
+                return True
+            i += 1
+        # Final try after consuming all
+        return match_here(input_line[i:], rest)
+
+    # Handle escapes and classes
     if pattern.startswith(r"\d"):
         return (input_line[0] in string.digits) and match_here(
             input_line[1:], pattern[2:]
@@ -18,7 +36,7 @@ def match_here(input_line, pattern):
         return (
             input_line[0] in string.digits + string.ascii_letters + "_"
         ) and match_here(input_line[1:], pattern[2:])
-    if pattern.startswith(r"["):
+    if pattern.startswith("["):
         pattern_end = pattern.find("]")
         if pattern_end == -1:
             raise ValueError("invalid pattern")
@@ -29,7 +47,18 @@ def match_here(input_line, pattern):
         return (input_line[0] in pattern[1:pattern_end]) and match_here(
             input_line[1:], pattern[pattern_end + 1 :]
         )
+
+    # Literal match
     return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
+
+
+def single_match(ch, atom):
+    """Helper: check if one character matches a given atom."""
+    if atom == r"\d":
+        return ch in string.digits
+    if atom == r"\w":
+        return ch in string.digits + string.ascii_letters + "_"
+    return ch == atom
 
 
 def match_pattern(input_line, pattern):

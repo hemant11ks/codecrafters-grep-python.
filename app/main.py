@@ -1,6 +1,23 @@
 import string
 import sys
 
+
+def find_matching_paren(pattern):
+    """
+    Find the index of the matching closing parenthesis for the first '('.
+    Returns -1 if not found.
+    """
+    depth = 0
+    for i, ch in enumerate(pattern):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
 def match_here(input_line, pattern):
     """
     Recursive function that checks whether the beginning of input_line
@@ -20,7 +37,7 @@ def match_here(input_line, pattern):
         return False
 
     # ------------------------
-    # Handle '+' quantifier: one or more occurrences of preceding atom
+    # Handle '+' quantifier
     # ------------------------
     if len(pattern) >= 2 and pattern[1] == "+":
         atom = pattern[0]
@@ -38,7 +55,7 @@ def match_here(input_line, pattern):
         return match_here(input_line[i:], rest)
 
     # ------------------------
-    # Handle '?' quantifier: zero or one occurrence
+    # Handle '?' quantifier
     # ------------------------
     if len(pattern) >= 2 and pattern[1] == "?":
         atom = pattern[0]
@@ -53,18 +70,32 @@ def match_here(input_line, pattern):
         return False
 
     # ------------------------
-    # Handle alternation (A|B)
-    # Example: (cat|dog)
+    # Handle alternation (A|B|C)
     # ------------------------
     if pattern.startswith("("):
-        close_index = pattern.find(")")
+        close_index = find_matching_paren(pattern)
         if close_index == -1:
             raise ValueError("invalid pattern: missing ')'")
 
         inside = pattern[1:close_index]
         rest = pattern[close_index + 1:]
 
-        options = inside.split("|")
+        # Split at top-level | (ignore | inside nested ())
+        options, buf, depth = [], "", 0
+        for ch in inside:
+            if ch == "(":
+                depth += 1
+                buf += ch
+            elif ch == ")":
+                depth -= 1
+                buf += ch
+            elif ch == "|" and depth == 0:
+                options.append(buf)
+                buf = ""
+            else:
+                buf += ch
+        options.append(buf)
+
         for option in options:
             if match_here(input_line, option + rest):
                 return True

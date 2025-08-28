@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from execution_engine import ExecutionEngine
 try:
     from .execution_engine import *
 except ImportError:

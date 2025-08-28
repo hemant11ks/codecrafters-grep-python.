@@ -1,12 +1,8 @@
 import string
 import sys
 
-
 def find_matching_paren(pattern):
-    """
-    Find the index of the matching closing parenthesis for the first '('.
-    Returns -1 if not found.
-    """
+    """Find the index of the matching closing parenthesis for the first '('."""
     depth = 0
     for i, ch in enumerate(pattern):
         if ch == "(":
@@ -18,156 +14,123 @@ def find_matching_paren(pattern):
     return -1
 
 
-def match_here(input_line, pattern):
-    """
-    Recursive function that checks whether the beginning of input_line
-    matches the given regex pattern.
-    """
+def split_alternatives(pattern):
+    """Split a pattern inside (...) by top-level | (not inside nested groups)."""
+    parts, buf, depth = [], "", 0
+    for ch in pattern:
+        if ch == "(":
+            depth += 1
+            buf += ch
+        elif ch == ")":
+            depth -= 1
+            buf += ch
+        elif ch == "|" and depth == 0:
+            parts.append(buf)
+            buf = ""
+        else:
+            buf += ch
+    parts.append(buf)
+    return parts
 
-    # Base case: empty pattern always matches
+
+def match_here(input_line, pattern):
+    """Recursive function that checks whether input_line matches pattern."""
     if pattern == "":
         return True
 
-    # If pattern ends with $, match only if input_line is empty
     if pattern == "$" and input_line == "":
         return True
 
-    # If pattern remains but input string is empty => no match
     if input_line == "":
         return False
 
     # ------------------------
-    # Handle '+' quantifier: one or more
+    # Handle '+' quantifier
     # ------------------------
     if len(pattern) >= 2 and pattern[1] == "+":
-        # Case 1: Group repetition
-        if pattern[0] == "(":
+        atom = pattern[0]
+        # Case: group repetition
+        if atom == "(":
             close_index = find_matching_paren(pattern)
             if close_index == -1:
                 raise ValueError("invalid pattern: missing ')'")
-
-            atom = pattern[:close_index + 1]   # e.g. "(cat|dog)"
-            rest = pattern[close_index + 2:]   # skip group and '+'
-
-            # First occurrence of the group must match
-            if not match_here(input_line, atom):
+            group = pattern[:close_index + 1]   # "(...)" including )
+            rest = pattern[close_index + 2:]    # skip over )+
+            # Must match the group at least once
+            if not match_here(input_line, group):
                 return False
-
-            # Greedily consume group matches
-            i = 0
-            while i <= len(input_line):
-                if match_here(input_line[i:], rest):
+            pos = 0
+            while pos <= len(input_line):
+                if match_here(input_line[pos:], rest):
                     return True
-                if not match_here(input_line[i:], atom):
+                if not match_here(input_line[pos:], group):
                     break
+                pos += 1
+            return False
+        else:
+            rest = pattern[2:]
+            if not single_match(input_line[0], atom):
+                return False
+            i = 1
+            while i < len(input_line) and single_match(input_line[i], atom):
+                if match_here(input_line[i + 1:], rest):
+                    return True
                 i += 1
-            return False
-
-        # Case 2: Single-character atom
-        atom = pattern[0]
-        rest = pattern[2:]
-
-        if not single_match(input_line[0], atom):
-            return False
-
-        i = 1
-        while i < len(input_line) and single_match(input_line[i], atom):
-            if match_here(input_line[i + 1:], rest):
-                return True
-            i += 1
-
-        return match_here(input_line[i:], rest)
+            return match_here(input_line[i:], rest)
 
     # ------------------------
-    # Handle '?' quantifier: zero or one
+    # Handle '?' quantifier
     # ------------------------
     if len(pattern) >= 2 and pattern[1] == "?":
         atom = pattern[0]
         rest = pattern[2:]
-
         if match_here(input_line, rest):
             return True
-
         if single_match(input_line[0], atom):
             return match_here(input_line[1:], rest)
-
         return False
 
     # ------------------------
-    # Handle alternation (A|B|C)
+    # Handle groups with alternation ( ... | ... )
     # ------------------------
     if pattern.startswith("("):
         close_index = find_matching_paren(pattern)
         if close_index == -1:
             raise ValueError("invalid pattern: missing ')'")
-
         inside = pattern[1:close_index]
         rest = pattern[close_index + 1:]
-
-        # Split at top-level | (ignore | inside nested ())
-        options, buf, depth = [], "", 0
-        for ch in inside:
-            if ch == "(":
-                depth += 1
-                buf += ch
-            elif ch == ")":
-                depth -= 1
-                buf += ch
-            elif ch == "|" and depth == 0:
-                options.append(buf)
-                buf = ""
-            else:
-                buf += ch
-        options.append(buf)
-
-        for option in options:
-            if match_here(input_line, option + rest):
+        for alt in split_alternatives(inside):
+            if match_here(input_line, alt + rest):
                 return True
         return False
 
     # ------------------------
-    # Handle escape sequences and character classes
+    # Escape sequences
     # ------------------------
-
-    # \d => digit
     if pattern.startswith(r"\d"):
-        return (input_line[0] in string.digits) and match_here(
-            input_line[1:], pattern[2:]
-        )
-
-    # \w => word char
+        return (input_line[0] in string.digits) and match_here(input_line[1:], pattern[2:])
     if pattern.startswith(r"\w"):
-        return (
-            input_line[0] in string.digits + string.ascii_letters + "_"
-        ) and match_here(input_line[1:], pattern[2:])
+        return (input_line[0] in string.digits + string.ascii_letters + "_") and match_here(input_line[1:], pattern[2:])
 
-    # Character class [...]
+    # ------------------------
+    # Character class
+    # ------------------------
     if pattern.startswith("["):
         pattern_end = pattern.find("]")
         if pattern_end == -1:
             raise ValueError("invalid pattern: missing ']'")
-
         if pattern[1] == "^":
-            return (
-                input_line[0] not in pattern[2:pattern_end]
-            ) and match_here(input_line[1:], pattern[pattern_end + 1:])
-
-        return (
-            input_line[0] in pattern[1:pattern_end]
-        ) and match_here(input_line[1:], pattern[pattern_end + 1:])
+            return (input_line[0] not in pattern[2:pattern_end]) and match_here(input_line[1:], pattern[pattern_end + 1:])
+        return (input_line[0] in pattern[1:pattern_end]) and match_here(input_line[1:], pattern[pattern_end + 1:])
 
     # ------------------------
-    # Default literal match
+    # Default: literal match
     # ------------------------
-    return (input_line[0] == pattern[0]) and match_here(
-        input_line[1:], pattern[1:]
-    )
+    return (input_line[0] == pattern[0]) and match_here(input_line[1:], pattern[1:])
 
 
 def single_match(ch, atom):
-    """
-    Helper: check if a single character `ch` matches a regex atom.
-    """
+    """Helper: check if one character matches a regex atom."""
     if atom == r"\d":
         return ch in string.digits
     if atom == r"\w":
@@ -176,31 +139,22 @@ def single_match(ch, atom):
 
 
 def match_pattern(input_line, pattern):
-    """
-    Wrapper: checks whether input_line matches the regex pattern.
-    """
+    """Wrapper: match full line with anchors or anywhere else."""
     if pattern.startswith("^"):
         return match_here(input_line, pattern[1:])
-
     while len(input_line) > 0:
         if match_here(input_line, pattern):
             return True
         input_line = input_line[1:]
-
     return False
 
 
 def main():
-    """
-    CLI entry point.
-    """
     pattern = sys.argv[2]
     input_line = sys.stdin.read()
-
     if sys.argv[1] != "-E":
         print("Expected first argument to be '-E'")
         exit(1)
-
     if match_pattern(input_line, pattern):
         exit(0)
     exit(1)

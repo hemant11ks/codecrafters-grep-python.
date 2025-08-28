@@ -37,9 +37,33 @@ def match_here(input_line, pattern):
         return False
 
     # ------------------------
-    # Handle '+' quantifier
+    # Handle '+' quantifier: one or more
     # ------------------------
     if len(pattern) >= 2 and pattern[1] == "+":
+        # Case 1: Group repetition
+        if pattern[0] == "(":
+            close_index = find_matching_paren(pattern)
+            if close_index == -1:
+                raise ValueError("invalid pattern: missing ')'")
+
+            atom = pattern[:close_index + 1]   # e.g. "(cat|dog)"
+            rest = pattern[close_index + 2:]   # skip group and '+'
+
+            # First occurrence of the group must match
+            if not match_here(input_line, atom):
+                return False
+
+            # Greedily consume group matches
+            i = 0
+            while i <= len(input_line):
+                if match_here(input_line[i:], rest):
+                    return True
+                if not match_here(input_line[i:], atom):
+                    break
+                i += 1
+            return False
+
+        # Case 2: Single-character atom
         atom = pattern[0]
         rest = pattern[2:]
 
@@ -55,7 +79,7 @@ def match_here(input_line, pattern):
         return match_here(input_line[i:], rest)
 
     # ------------------------
-    # Handle '?' quantifier
+    # Handle '?' quantifier: zero or one
     # ------------------------
     if len(pattern) >= 2 and pattern[1] == "?":
         atom = pattern[0]
